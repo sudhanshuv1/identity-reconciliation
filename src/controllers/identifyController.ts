@@ -3,19 +3,13 @@ import { Request, Response } from 'express';
 const prisma = new PrismaClient();
 
 
-const newPrimaryContact = async (email: String, phoneNumber: String) => {
-    const contact = await prisma.contact.create({
-        data: {
-            email: email,
-            phoneNumber: phoneNumber,
-            linkPrecedence: 'primary'
-        },
-    });
-    return contact.id;
-}
 
+/*
+    Return the ID of the primary contact to which the given contact can be linked
+*/
 const returnLinkedId = async (email: String, phoneNumber: String) => {
 
+    // no email in the request
     if (!email) {
         const contact = await prisma.contact.findFirst({
             where: {
@@ -31,6 +25,7 @@ const returnLinkedId = async (email: String, phoneNumber: String) => {
         }
     }
 
+    // no phone number in the request
     if (!phoneNumber) {
         const contact = await prisma.contact.findFirst({
             where: {
@@ -46,6 +41,7 @@ const returnLinkedId = async (email: String, phoneNumber: String) => {
         }
     }
 
+    // check for duplicate contact with same email and phone number
     const contact = await prisma.contact.findFirst({
         where: {
             AND: [
@@ -71,11 +67,13 @@ const returnLinkedId = async (email: String, phoneNumber: String) => {
         }
     });
 
+    // neither email nor phone number matched
     if (!contact1 && !contact2) {
         const contactId = await newPrimaryContact(email, phoneNumber);
         return contactId;
     }
 
+    // only email matched
     if (!contact1 && contact2) {
         const linkedId = contact2.linkPrecedence == 'primary' ? contact2.id : contact2.linkedId;
         const contactEntry = await prisma.contact.create({
@@ -89,6 +87,7 @@ const returnLinkedId = async (email: String, phoneNumber: String) => {
         return contactEntry.linkedId;
     }
 
+    // only phone number matched
     if (contact1 && !contact2) {
         const linkedId = contact1.linkPrecedence == 'primary' ? contact1.id : contact1.linkedId;
         const contactEntry = await prisma.contact.create({
@@ -102,8 +101,10 @@ const returnLinkedId = async (email: String, phoneNumber: String) => {
         return contactEntry.linkedId;
     }
 
-    // matched 2 different contacts
+    // email and phone number matched to 2 different existing contacts
     else {
+
+        // both contact are primary
         if (contact1.linkPrecedence == 'primary' && contact2.linkPrecedence == 'primary') {
             if (contact1.createdAt < contact2.createdAt) {
                 await prisma.contact.updateMany({
@@ -152,6 +153,8 @@ const returnLinkedId = async (email: String, phoneNumber: String) => {
                 return contactEntry.linkedId;
             }
         }
+
+        // both contacts are secondary
         else if (contact1.linkPrecedence == 'secondary' && contact2.linkPrecedence == 'secondary') {
             if (contact1.linkedId == contact2.linkedId){
                 const contactEntry = await prisma.contact.create({
@@ -221,6 +224,8 @@ const returnLinkedId = async (email: String, phoneNumber: String) => {
                 return contactEntry.linkedId;
             }
         }
+
+        // one contact is primary and another secondary
         else {
             const primaryContact = contact1.linkPrecedence == 'primary' ? contact1 : contact2;
             const secondaryContact = contact1.linkPrecedence == 'secondary' ? contact1 : contact2;
@@ -292,6 +297,10 @@ const returnLinkedId = async (email: String, phoneNumber: String) => {
     }
 };
 
+
+//    @desc Identify contact
+//    @route POST /identify
+//    @access Public
 export const identify = async (req: Request, res: Response) => {
     try {
         const { email, phoneNumber } = req.body;
@@ -328,4 +337,18 @@ export const identify = async (req: Request, res: Response) => {
         console.log(error);
         res.status(500).json({ message: errorMessage });
     }
+}
+
+/*
+    Create a new primary contact because neither the email or phoneNumber exist in the database.
+*/
+const newPrimaryContact = async (email: String, phoneNumber: String) => {
+    const contact = await prisma.contact.create({
+        data: {
+            email: email,
+            phoneNumber: phoneNumber,
+            linkPrecedence: 'primary'
+        },
+    });
+    return contact.id;
 }
