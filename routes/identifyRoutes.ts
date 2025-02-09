@@ -1,4 +1,8 @@
-const router = express.Router();
-const identifyController = require('../controllers/identifyController');
+import { Router } from 'express';
+import { identify } from '../controllers/identifyController';
 
-router.post('/', identifyController.identify);
+const router = Router();
+
+router.post('/', identify);
+
+export default router;

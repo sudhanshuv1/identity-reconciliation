@@ -2,17 +2,13 @@ const { PrismaClient } = require('@prisma/client');
 import { Request, Response } from 'express';
 const prisma = new PrismaClient();
 
-enum LinkPrecedence {
-    primary,
-    secondary
-}
 
 const newPrimaryContact = async (email: String, phoneNumber: String) => {
     const contact = await prisma.contact.create({
         data: {
             email: email,
             phoneNumber: phoneNumber,
-            linkPrecedence: LinkPrecedence.primary
+            linkPrecedence: 'primary'
         },
     });
     return contact.id;
@@ -21,13 +17,13 @@ const newPrimaryContact = async (email: String, phoneNumber: String) => {
 const returnLinkedId = async (email: String, phoneNumber: String) => {
 
     if (!email) {
-        const contact = await prisma.contact.findUnique({
+        const contact = await prisma.contact.findFirst({
             where: {
                 phoneNumber: phoneNumber
             }
         });
         if (contact) {
-            return contact.id
+            return contact.linkedId ? contact.linkedId : contact.id;
         }
         else {
             const contactId = await newPrimaryContact(email, phoneNumber);
@@ -36,13 +32,13 @@ const returnLinkedId = async (email: String, phoneNumber: String) => {
     }
 
     if (!phoneNumber) {
-        const contact = await prisma.contact.findUnique({
+        const contact = await prisma.contact.findFirst({
             where: {
                 email: email
             }
         });
         if (contact) {
-            return contact.id;
+            return contact.linkedId ? contact.linkedId : contact.id;
         }
         else {
             const contactId = await newPrimaryContact(email, phoneNumber);
@@ -50,7 +46,7 @@ const returnLinkedId = async (email: String, phoneNumber: String) => {
         }
     }
 
-    const contact = await prisma.contact.findUnique({
+    const contact = await prisma.contact.findFirst({
         where: {
             AND: [
                 { email: email },
@@ -60,16 +56,16 @@ const returnLinkedId = async (email: String, phoneNumber: String) => {
     });
 
     if (contact) {
-        return contact.id;
+        return contact.linkedId ? contact.linkedId : contact.id;
     }
 
-    const contact1 = await prisma.contact.findUnique({
+    const contact1 = await prisma.contact.findFirst({
         where: {
             email: email
         }
     });
 
-    const contact2 = await prisma.contact.findUnique({
+    const contact2 = await prisma.contact.findFirst({
         where: {
             phoneNumber: phoneNumber
         }
@@ -81,26 +77,26 @@ const returnLinkedId = async (email: String, phoneNumber: String) => {
     }
 
     if (!contact1 && contact2) {
-        const linkedId = contact2.linkPrecendence == LinkPrecedence.primary ? contact2.id : contact2.linkedId;
+        const linkedId = contact2.linkPrecedence == 'primary' ? contact2.id : contact2.linkedId;
         const contactEntry = await prisma.contact.create({
             data: {
                 email: email,
                 phoneNumber: phoneNumber,
                 linkedId: linkedId,
-                linkPrecedence: LinkPrecedence.secondary
+                linkPrecedence: 'secondary'
             }
         })
         return contactEntry.linkedId;
     }
 
     if (contact1 && !contact2) {
-        const linkedId = contact1.linkPrecendence == LinkPrecedence.primary ? contact1.id : contact1.linkedId;
+        const linkedId = contact1.linkPrecedence == 'primary' ? contact1.id : contact1.linkedId;
         const contactEntry = await prisma.contact.create({
             data: {
                 email: email,
                 phoneNumber: phoneNumber,
                 linkedId: linkedId,
-                linkPrecedence: LinkPrecedence.secondary
+                linkPrecedence: 'secondary'
             }
         })
         return contactEntry.linkedId;
@@ -108,7 +104,7 @@ const returnLinkedId = async (email: String, phoneNumber: String) => {
 
     // matched 2 different contacts
     else {
-        if(contact1.linkPrecedence == LinkPrecedence.primary && contact2.linkPrecedence == LinkPrecedence.primary) {
+        if (contact1.linkPrecedence == 'primary' && contact2.linkPrecedence == 'primary') {
             if (contact1.createdAt < contact2.createdAt) {
                 await prisma.contact.updateMany({
                     where: {
@@ -119,7 +115,7 @@ const returnLinkedId = async (email: String, phoneNumber: String) => {
                     },
                     data: {
                         linkedId: contact1.id,
-                        linkPrecedence: LinkPrecedence.secondary
+                        linkPrecedence: 'secondary'
                     },
                 })
                 const contactEntry = await prisma.contact.create({
@@ -127,7 +123,7 @@ const returnLinkedId = async (email: String, phoneNumber: String) => {
                         email: email,
                         phoneNumber: phoneNumber,
                         linkedId: contact1.id,
-                        linkPrecedence: LinkPrecedence.secondary
+                        linkPrecedence: 'secondary'
                     }
                 })
                 return contactEntry.linkedId;
@@ -142,7 +138,7 @@ const returnLinkedId = async (email: String, phoneNumber: String) => {
                     },
                     data: {
                         linkedId: contact2.id,
-                        linkPrecedence: LinkPrecedence.secondary
+                        linkPrecedence: 'secondary'
                     },
                 })
                 const contactEntry = await prisma.contact.create({
@@ -150,30 +146,30 @@ const returnLinkedId = async (email: String, phoneNumber: String) => {
                         email: email,
                         phoneNumber: phoneNumber,
                         linkedId: contact2.id,
-                        linkPrecedence: LinkPrecedence.secondary
+                        linkPrecedence: 'secondary'
                     }
                 })
                 return contactEntry.linkedId;
             }
         }
-        else if(contact1.linkPrecedence == LinkPrecedence.secondary && contact2.linkPrecedence == LinkPrecedence.secondary) {
+        else if (contact1.linkPrecedence == 'secondary' && contact2.linkPrecedence == 'secondary') {
             if (contact1.linkedId == contact2.linkedId){
                 const contactEntry = await prisma.contact.create({
                     data: {
                         email: email,
                         phoneNumber: phoneNumber,
                         linkedId: contact1.linkedId,
-                        linkPrecedence: LinkPrecedence.secondary
+                        linkPrecedence: 'secondary'
                     }
                 })
                 return contactEntry.linkedId;
             }
-            const primaryContact1 = await prisma.contact.findUnique({
+            const primaryContact1 = await prisma.contact.findFirst({
                 where: {
                     id: contact1.linkedId
                 }
             });
-            const primaryContact2 = await prisma.contact.findUnique({
+            const primaryContact2 = await prisma.contact.findFirst({
                 where: {
                     id: contact2.linkedId
                 }
@@ -188,7 +184,7 @@ const returnLinkedId = async (email: String, phoneNumber: String) => {
                     },
                     data: {
                         linkedId: primaryContact1.id,
-                        linkPrecedence: LinkPrecedence.secondary
+                        linkPrecedence: 'secondary'
                     },
                 })
                 const contactEntry = await prisma.contact.create({
@@ -196,7 +192,7 @@ const returnLinkedId = async (email: String, phoneNumber: String) => {
                         email: email,
                         phoneNumber: phoneNumber,
                         linkedId: primaryContact1.id,
-                        linkPrecedence: LinkPrecedence.secondary
+                        linkPrecedence: 'secondary'
                     }
                 })
                 return contactEntry.linkedId;
@@ -211,7 +207,7 @@ const returnLinkedId = async (email: String, phoneNumber: String) => {
                     },
                     data: {
                         linkedId: primaryContact2.id,
-                        linkPrecedence: LinkPrecedence.secondary
+                        linkPrecedence: 'secondary'
                     },
                 })
                 const contactEntry = await prisma.contact.create({
@@ -219,28 +215,28 @@ const returnLinkedId = async (email: String, phoneNumber: String) => {
                         email: email,
                         phoneNumber: phoneNumber,
                         linkedId: primaryContact2.id,
-                        linkPrecedence: LinkPrecedence.secondary
+                        linkPrecedence: 'secondary'
                     }
                 })
                 return contactEntry.linkedId;
             }
         }
         else {
-            const primaryContact = contact1.linkPrecedence == LinkPrecedence.primary ? contact1 : contact2;
-            const secondaryContact = contact1.linkPrecedence == LinkPrecedence.secondary ? contact1 : contact2;
+            const primaryContact = contact1.linkPrecedence == 'primary' ? contact1 : contact2;
+            const secondaryContact = contact1.linkPrecedence == 'secondary' ? contact1 : contact2;
             if (secondaryContact.linkedId == primaryContact.id) {
                 const contactEntry = await prisma.contact.create({
                     data: {
                         email: email,
                         phoneNumber: phoneNumber,
                         linkedId: primaryContact.id,
-                        linkPrecedence: LinkPrecedence.secondary
+                        linkPrecedence: 'secondary'
                     }
                 });
                 return contactEntry.linkedId;
             }
             else {
-                const anotherPrimaryContact = await prisma.contact.findUnique({
+                const anotherPrimaryContact = await prisma.contact.findFirst({
                     where: {
                         id: secondaryContact.linkedId
                     }
@@ -255,7 +251,7 @@ const returnLinkedId = async (email: String, phoneNumber: String) => {
                         },
                         data: {
                             linkedId: anotherPrimaryContact.id,
-                            linkPrecedence: LinkPrecedence.secondary
+                            linkPrecedence: 'secondary'
                         },
                     })
                     const contactEntry = await prisma.contact.create({
@@ -263,7 +259,7 @@ const returnLinkedId = async (email: String, phoneNumber: String) => {
                             email: email,
                             phoneNumber: phoneNumber,
                             linkedId: anotherPrimaryContact.id,
-                            linkPrecedence: LinkPrecedence.secondary
+                            linkPrecedence: 'secondary'
                         }
                     })
                     return contactEntry.linkedId;
@@ -278,7 +274,7 @@ const returnLinkedId = async (email: String, phoneNumber: String) => {
                         },
                         data: {
                             linkedId: primaryContact.id,
-                            linkPrecedence: LinkPrecedence.secondary
+                            linkPrecedence: 'secondary'
                         },
                     })
                     const contactEntry = await prisma.contact.create({
@@ -286,7 +282,7 @@ const returnLinkedId = async (email: String, phoneNumber: String) => {
                             email: email,
                             phoneNumber: phoneNumber,
                             linkedId: primaryContact.id,
-                            linkPrecedence: LinkPrecedence.secondary
+                            linkPrecedence: 'secondary'
                         }
                     })
                     return contactEntry.linkedId;
@@ -296,7 +292,7 @@ const returnLinkedId = async (email: String, phoneNumber: String) => {
     }
 };
 
-const identify = async (req: Request, res: Response) => {
+export const identify = async (req: Request, res: Response) => {
     try {
         const { email, phoneNumber } = req.body;
         const contactId = await returnLinkedId(email, phoneNumber);
@@ -310,29 +306,26 @@ const identify = async (req: Request, res: Response) => {
                 linkedId: contactId
             }
         });
-        const emails = primaryContact.email;
-        const phoneNumbers = primaryContact.phoneNumber;
+        const emails: string[] = [primaryContact.email];
+        const phoneNumbers: string[] = [primaryContact.phoneNumber];
         const secondaryContactIds: number[] = [];
         linkedContacts.forEach((contact: { email: string; phoneNumber: string; id: number }) => {
-            emails.append(contact.email);
-            phoneNumbers.append(contact.phoneNumber);
+            emails.push(contact.email);
+            phoneNumbers.push(contact.phoneNumber);
             secondaryContactIds.push(contact.id);
         });
         res.status(200).json({
             contact: {
                 primaryContactId: contactId,
-                emails: emails,
-                phoneNumbers: phoneNumbers,
+                emails: [...new Set(emails)],
+                phoneNumbers: [...new Set(phoneNumbers)],
                 secondaryContactIds: secondaryContactIds
             }
         })
     }
     catch (error) {
         const errorMessage = (error as Error).message;
+        console.log(error);
         res.status(500).json({ message: errorMessage });
     }
 }
-
-module.exports = {
-    identify
-};
