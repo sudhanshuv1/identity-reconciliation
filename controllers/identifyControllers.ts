@@ -18,7 +18,7 @@ const newPrimaryContact = async (email: String, phoneNumber: String) => {
     return contact.id;
 }
 
-const returnId = async (email: String, phoneNumber: String) => {
+const returnLinkedId = async (email: String, phoneNumber: String) => {
 
     if (!email) {
         const contact = await prisma.contact.findUnique({
@@ -106,7 +106,7 @@ const returnId = async (email: String, phoneNumber: String) => {
         return contactEntry.linkedId;
     }
 
-    // match 2 different contacts
+    // matched 2 different contacts
     else {
         if(contact1.linkPrecedence == LinkPrecedence.primary && contact2.linkPrecedence == LinkPrecedence.primary) {
             if (contact1.createdAt < contact2.createdAt) {
@@ -297,33 +297,42 @@ const returnId = async (email: String, phoneNumber: String) => {
 };
 
 const identify = async (req: Request, res: Response) => {
-
-    const { email, phoneNumber } = req.body;
-    const contactId = await returnId(email, phoneNumber);
-    const primaryContact = prisma.contact.findUnique({
-        where: {
-            id: contactId
-        }
-    });
-    const linkedContacts = prisma.contact.findMany({
-        where: {
-            linkedId: contactId
-        }
-    });
-    const emails = primaryContact.email;
-    const phoneNumbers = primaryContact.phoneNumber;
-    const secondaryContactIds: number[] = [];
-    linkedContacts.forEach((contact: { email: string; phoneNumber: string; id: number }) => {
-        emails.push(contact.email);
-        phoneNumbers.push(contact.phoneNumber);
-        secondaryContactIds.push(contact.id);
-    });
-    res.json({
-        contact: {
-            primaryContactId: contactId,
-            emails: emails,
-            phoneNumbers: phoneNumbers,
-            secondaryContactIds: secondaryContactIds
-        }
-    })
+    try {
+        const { email, phoneNumber } = req.body;
+        const contactId = await returnLinkedId(email, phoneNumber);
+        const primaryContact = await prisma.contact.findUnique({
+            where: {
+                id: contactId
+            }
+        });
+        const linkedContacts = await prisma.contact.findMany({
+            where: {
+                linkedId: contactId
+            }
+        });
+        const emails = primaryContact.email;
+        const phoneNumbers = primaryContact.phoneNumber;
+        const secondaryContactIds: number[] = [];
+        linkedContacts.forEach((contact: { email: string; phoneNumber: string; id: number }) => {
+            emails.append(contact.email);
+            phoneNumbers.append(contact.phoneNumber);
+            secondaryContactIds.push(contact.id);
+        });
+        res.status(200).json({
+            contact: {
+                primaryContactId: contactId,
+                emails: emails,
+                phoneNumbers: phoneNumbers,
+                secondaryContactIds: secondaryContactIds
+            }
+        })
+    }
+    catch (error) {
+        const errorMessage = (error as Error).message;
+        res.status(500).json({ message: errorMessage });
+    }
 }
+
+module.exports = {
+    identify
+};
